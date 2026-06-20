@@ -8,47 +8,40 @@ the usual file operations. Zero npm dependencies - it runs on Node's built-ins.
 
 *Column view with the live preview pane. Icon, List and Gallery views are a click away.*
 
-## Requirements
+## Quickstart
 
-- **macOS** - WebFinder shells out to macOS-only tools (`open`, the Trash,
-  Reveal in Finder) and the optional sidebar helper uses a macOS system service.
-- **Node.js 18 or newer** - the only runtime dependency. Check with `node -v`.
-  Install from [nodejs.org](https://nodejs.org/) or via Homebrew (`brew install node`).
-- **Xcode Command Line Tools** - *optional*, only needed to build the native
-  Finder-sidebar helper. Install with `xcode-select --install`.
-
-## Install
+You only need [Node.js](https://nodejs.org/) 18 or newer (`node -v` to check).
+Copy and paste:
 
 ```bash
 git clone https://github.com/markhammond-covecta/webfinder.git
 cd webfinder
-```
-
-Optionally compile the native Finder-sidebar helper (needs the Xcode Command
-Line Tools):
-
-```bash
-./build.sh
-```
-
-There are no npm packages to install - WebFinder runs on Node's built-ins
-alone, so there is no `npm install` step. `build.sh` is optional too: WebFinder
-runs without it, just with default favourites instead of your real Finder
-sidebar.
-
-## Run
-
-```bash
 node server.js
 ```
 
-Or `npm start`. Then open http://localhost:4567 in your browser.
+Then open **http://localhost:4567** in your browser. That's it - there are no
+packages to install (WebFinder runs on Node's built-ins alone) and no build
+step. `npm start` works too.
 
 To confine WebFinder to your home folder instead of the whole disk:
 
 ```bash
 WEBFINDER_ROOT="$HOME" node server.js
 ```
+
+## Real Finder sidebar (optional)
+
+By default the sidebar shows sensible favourites (Home, Desktop, Documents,
+Downloads, Pictures, Music, Movies). To make it mirror your *actual* Finder
+favourites, compile the tiny native helper (needs the Xcode Command Line Tools,
+`xcode-select --install`):
+
+```bash
+./build.sh
+```
+
+WebFinder runs fine without this - it just falls back to the default
+favourites.
 
 ### Run at login (optional)
 
