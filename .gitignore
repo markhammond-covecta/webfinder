@@ -1,0 +1,11 @@
+# compiled native helper (regenerate with ./build.sh)
+helper/webfinder-helper
+
+# logs
+*.log
+
+# macOS
+.DS_Store
+
+# node (not used, but just in case)
+node_modules/
