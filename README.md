@@ -22,7 +22,13 @@ the usual file operations. Zero npm dependencies - it runs on Node's built-ins.
 ```bash
 git clone https://github.com/markhammond-covecta/webfinder.git
 cd webfinder
-./build.sh        # optional: compiles the Finder-sidebar helper (needs Xcode CLT)
+```
+
+Optionally compile the native Finder-sidebar helper (needs the Xcode Command
+Line Tools):
+
+```bash
+./build.sh
 ```
 
 There are no npm packages to install - WebFinder runs on Node's built-ins
@@ -33,9 +39,10 @@ sidebar.
 ## Run
 
 ```bash
-node server.js          # or: npm start
-# then open http://localhost:4567
+node server.js
 ```
+
+Or `npm start`. Then open http://localhost:4567 in your browser.
 
 To confine WebFinder to your home folder instead of the whole disk:
 
@@ -49,8 +56,10 @@ To have WebFinder start automatically on login (and restart if it crashes),
 install it as a per-user macOS LaunchAgent:
 
 ```bash
-./install-login-item.sh         # uninstall with ./uninstall-login-item.sh
+./install-login-item.sh
 ```
+
+Uninstall with `./uninstall-login-item.sh`.
 
 Options (environment variables):
 
