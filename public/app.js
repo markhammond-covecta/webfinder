@@ -984,9 +984,15 @@ function copyToClipboard(mode) {
   state.clipboard = { paths: sel.map((e) => e.path), mode };
   toast(`Copied ${sel.length} item${sel.length === 1 ? '' : 's'}`);
 }
+// Backslash-escape characters that are special to POSIX shells (zsh/bash) so
+// the copied path can be pasted straight into a terminal, e.g. a path with
+// spaces becomes  /Users/mark/Shared\ drives  rather than breaking `cd`.
+function shellEscapePath(p) {
+  return p.replace(/[ \t"'`$&|;<>()*?#~!\\\[\]{}]/g, '\\$&');
+}
 async function copyPathToClipboard(paths) {
   if (!paths || !paths.length) return;
-  const text = paths.join('\n');
+  const text = paths.map(shellEscapePath).join('\n');
   try {
     await navigator.clipboard.writeText(text);
     toast(paths.length === 1 ? 'Copied path to clipboard' : `Copied ${paths.length} paths to clipboard`);
