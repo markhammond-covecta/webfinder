@@ -836,11 +836,13 @@ function showContextMenu(ev, entry) {
     items.push({ label: 'Rename', sc: '⏎', disabled: n !== 1, act: () => beginRename(sel[0]) });
     items.push({ label: 'Duplicate', sc: '⌘D', act: doDuplicate });
     items.push({ label: 'Copy', sc: '⌘C', act: () => copyToClipboard('copy') });
+    items.push({ label: n > 1 ? 'Copy Paths to Clipboard' : 'Copy Path to Clipboard', sc: '⌥⌘C', act: () => copyPathToClipboard(sel.map((e) => e.path)) });
     items.push({ sep: true });
     items.push({ label: n > 1 ? `Move ${n} Items to Trash` : 'Move to Trash', sc: '⌘⌫', act: doTrash });
   } else {
     items.push({ label: 'New Folder', sc: '⇧⌘N', act: doNewFolder });
     if (state.clipboard) items.push({ label: `Paste Item${state.clipboard.paths.length === 1 ? '' : 's'}`, sc: '⌘V', act: doPaste });
+    items.push({ label: 'Copy Path to Clipboard', sc: '⌥⌘C', act: () => copyPathToClipboard([state.cwd]) });
     items.push({ sep: true });
     items.push({ label: 'Show View Options', disabled: true });
     items.push({ label: state.showHidden ? 'Hide Hidden Files' : 'Show Hidden Files', sc: '⇧⌘.', act: toggleHidden });
@@ -982,6 +984,16 @@ function copyToClipboard(mode) {
   state.clipboard = { paths: sel.map((e) => e.path), mode };
   toast(`Copied ${sel.length} item${sel.length === 1 ? '' : 's'}`);
 }
+async function copyPathToClipboard(paths) {
+  if (!paths || !paths.length) return;
+  const text = paths.join('\n');
+  try {
+    await navigator.clipboard.writeText(text);
+    toast(paths.length === 1 ? 'Copied path to clipboard' : `Copied ${paths.length} paths to clipboard`);
+  } catch (e) {
+    toast('Copy path failed: ' + e.message);
+  }
+}
 async function doPaste() {
   if (!state.clipboard) return;
   try {
@@ -1109,6 +1121,7 @@ document.addEventListener('keydown', (ev) => {
   if (meta && k === ']') { ev.preventDefault(); goForward(); return; }
   if (meta && k.toLowerCase() === 'n' && ev.shiftKey) { ev.preventDefault(); doNewFolder(); return; }
   if (meta && k.toLowerCase() === 'd') { ev.preventDefault(); doDuplicate(); return; }
+  if (meta && ev.altKey && ev.code === 'KeyC') { ev.preventDefault(); const s = selectedEntries(); copyPathToClipboard(s.length ? s.map((e) => e.path) : [state.cwd]); return; }
   if (meta && k.toLowerCase() === 'c') { ev.preventDefault(); copyToClipboard('copy'); return; }
   if (meta && k.toLowerCase() === 'v') { ev.preventDefault(); doPaste(); return; }
   if (meta && k.toLowerCase() === 'o') { ev.preventDefault(); selectedEntries().forEach(openEntry); return; }
