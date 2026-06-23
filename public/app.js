@@ -62,6 +62,8 @@ const state = {
   clipboard: null,              // { paths:[], mode:'copy'|'cut' }
   columns: [],                  // column view: [{ path, entries, selected }]
   listColW: { date: 170, created: 170, size: 92, kind: 130 }, // resizable list-view column widths (name flexes)
+  expanded: new Set(),          // list view: paths of folders expanded inline
+  childCache: new Map(),        // list view: path -> raw child entries (loaded on expand)
 };
 
 const $ = (id) => document.getElementById(id);
@@ -126,8 +128,12 @@ function toast(msg) {
 }
 
 // ---------------------------------------------------------- Data + sort ----
-function visibleEntries() {
-  let list = state.entries.slice();
+function visibleEntries() { return sortFilter(state.entries); }
+
+// Apply the hidden/search filters and the active sort to a raw entries array.
+// Used for the current folder and, in list view, for each expanded subfolder.
+function sortFilter(entries) {
+  let list = entries.slice();
   if (!state.showHidden) list = list.filter((e) => !e.hidden);
   if (state.search.trim()) {
     const q = state.search.trim().toLowerCase();
@@ -150,6 +156,54 @@ function visibleEntries() {
   return list;
 }
 
+// A folder can be expanded inline in list view (everything except .app bundles).
+function isExpandable(e) { return e.isDir && e.kind !== 'app'; }
+
+// Flatten the current folder into the rows shown in list view, recursively
+// splicing in the children of any expanded folders. Each row carries its
+// nesting depth so the renderer can indent it.
+function listRows() {
+  const rows = [];
+  const walk = (entries, depth) => {
+    for (const e of sortFilter(entries)) {
+      rows.push({ e, depth });
+      if (isExpandable(e) && state.expanded.has(e.path)) {
+        const kids = state.childCache.get(e.path);
+        if (kids) walk(kids, depth + 1);
+      }
+    }
+  };
+  walk(state.entries, 0);
+  return rows;
+}
+
+// Toggle inline expansion of a folder in list view, loading its children once.
+async function toggleExpand(e) {
+  if (state.expanded.has(e.path)) {
+    state.expanded.delete(e.path);
+    renderMain(); updateStatus();
+    return;
+  }
+  if (!state.childCache.has(e.path)) {
+    try {
+      const data = await API.list(e.path);
+      state.childCache.set(e.path, data.entries);
+    } catch (err) { toast('Cannot open: ' + err.message); return; }
+  }
+  state.expanded.add(e.path);
+  renderMain(); updateStatus();
+}
+
+// Reload the cached children of every still-expanded folder (after a refresh).
+async function reloadExpanded() {
+  for (const p of state.expanded) {
+    try {
+      const data = await API.list(p);
+      state.childCache.set(p, data.entries);
+    } catch (err) { state.expanded.delete(p); state.childCache.delete(p); }
+  }
+}
+
 // ----------------------------------------------------------- Navigation ----
 async function navigate(path, pushHistory = true) {
   let data;
@@ -158,6 +212,8 @@ async function navigate(path, pushHistory = true) {
   } catch (e) { toast('Cannot open: ' + e.message); return; }
   state.cwd = data.path;
   state.entries = data.entries;
+  state.expanded.clear();
+  state.childCache.clear();
   state.selection.clear();
   state.anchor = null;
   state.search = ''; $('searchInput').value = '';
@@ -195,7 +251,9 @@ function selectedEntries() {
     }
     return sel;
   }
-  return visibleEntries().filter((e) => state.selection.has(e.path));
+  // List view may show expanded children, so resolve against the flattened rows.
+  const pool = state.view === 'list' ? orderedVisible() : visibleEntries();
+  return pool.filter((e) => state.selection.has(e.path));
 }
 
 function handleItemClick(ev, entry, ordered) {
@@ -339,16 +397,28 @@ function renderList(c) {
     head.appendChild(col);
   });
   view.appendChild(head);
-  if (!list.length) { c.appendChild(view); c.appendChild(emptyMsg()); return; }
-  for (const e of list) {
+  const rows = listRows();
+  if (!rows.length) { c.appendChild(view); c.appendChild(emptyMsg()); return; }
+  const ordered = rows.map((r) => r.e);
+  for (const { e, depth } of rows) {
     const row = el('div', 'list-row' + (state.selection.has(e.path) ? ' selected' : '') + (e.hidden ? ' hidden-file' : ''));
+    const expandable = isExpandable(e);
+    const disc = expandable
+      ? `<span class="disclosure${state.expanded.has(e.path) ? ' open' : ''}">›</span>`
+      : '<span class="disclosure"></span>';
+    // Indent nested rows; base padding is 10px (see .list-row .col).
+    const nameStyle = depth ? ` style="padding-left:${10 + depth * 16}px"` : '';
     row.innerHTML =
-      `<div class="col name">${e.isDir && e.kind !== 'app' ? '<span class="disclosure">›</span>' : '<span class="disclosure"></span>'}${thumbHTML(e)}<span class="nm">${escapeHTML(e.name)}</span></div>` +
+      `<div class="col name"${nameStyle}>${disc}${thumbHTML(e)}<span class="nm">${escapeHTML(e.name)}</span></div>` +
       `<div class="col date" style="${colStyle('date')}">${formatDate(e.mtime)}</div>` +
       `<div class="col created" style="${colStyle('created')}">${formatDate(e.ctime)}</div>` +
       `<div class="col size" style="${colStyle('size')}">${formatSize(e.size, e.isDir)}</div>` +
       `<div class="col kind" style="${colStyle('kind')}">${kindName(e)}</div>`;
-    wireItem(row, e, list);
+    wireItem(row, e, ordered);
+    if (expandable) {
+      const tri = row.querySelector('.disclosure');
+      tri.onclick = (ev) => { ev.stopPropagation(); toggleExpand(e); };
+    }
     view.appendChild(row);
   }
   c.appendChild(view);
@@ -492,7 +562,7 @@ function renderPathBar() {
 }
 function updateStatus() {
   const list = visibleEntries();
-  const sel = state.view === 'column' ? selectedEntries() : list.filter((e) => state.selection.has(e.path));
+  const sel = selectedEntries();
   let msg = `${list.length} item${list.length === 1 ? '' : 's'}`;
   if (sel.length) msg = `${sel.length} of ${list.length} selected`;
   $('status').textContent = msg;
@@ -712,6 +782,7 @@ function orderedForView() {
     const last = state.columns[state.columns.length - 1];
     return last ? colVisible(last.entries) : [];
   }
+  if (state.view === 'list') return listRows().map((r) => r.e);
   return visibleEntries();
 }
 
@@ -930,6 +1001,7 @@ async function refresh() {
   const data = await API.list(state.cwd);
   state.entries = data.entries;
   state.selection = new Set(keep.filter((p) => data.entries.some((e) => e.path === p)));
+  if (state.expanded.size) await reloadExpanded();
   if (state.view === 'column') {
     // reload columns from root chain
     await reloadColumns();
@@ -1017,7 +1089,11 @@ function setView(v) {
 }
 
 // ----------------------------------------------------------- Keyboard ----
-function orderedVisible() { return state.view === 'column' ? [] : visibleEntries(); }
+function orderedVisible() {
+  if (state.view === 'column') return [];
+  if (state.view === 'list') return listRows().map((r) => r.e);
+  return visibleEntries();
+}
 function moveSelection(delta, cols) {
   const list = orderedVisible();
   if (!list.length) return;
@@ -1030,6 +1106,28 @@ function moveSelection(delta, cols) {
   renderMain(); updateStatus();
   const node = document.querySelector(`.icon-item[data-path="${cssEscape(e.path)}"],.list-row[data-path="${cssEscape(e.path)}"]`);
   if (node) node.scrollIntoView({ block: 'nearest' });
+}
+// List view: Right expands a collapsed folder (or steps into an expanded one);
+// Left collapses an expanded folder, else selects the parent of a nested row.
+function listExpandKey() {
+  const sel = selectedEntries();
+  if (sel.length !== 1) return;
+  const e = sel[0];
+  if (isExpandable(e) && !state.expanded.has(e.path)) toggleExpand(e);
+  else if (isExpandable(e) && state.expanded.has(e.path)) moveSelection(1);
+}
+function listCollapseKey() {
+  const sel = selectedEntries();
+  if (sel.length !== 1) return;
+  const e = sel[0];
+  if (isExpandable(e) && state.expanded.has(e.path)) { toggleExpand(e); return; }
+  const parent = parentPath(e.path);
+  if (parent !== state.cwd && state.expanded.has(parent)) {
+    setSelection([parent]); state.anchor = parent;
+    renderMain(); updateStatus();
+    const node = document.querySelector(`.list-row[data-path="${cssEscape(parent)}"]`);
+    if (node) node.scrollIntoView({ block: 'nearest' });
+  }
 }
 function iconCols() {
   const items = document.querySelectorAll('.icon-item');
@@ -1120,7 +1218,7 @@ document.addEventListener('keydown', (ev) => {
     return;
   }
   if (k === ' ') { ev.preventDefault(); openQuickLook(); return; }
-  if (meta && k.toLowerCase() === 'a') { ev.preventDefault(); setSelection(visibleEntries().map((e) => e.path)); renderMain(); updateStatus(); return; }
+  if (meta && k.toLowerCase() === 'a') { ev.preventDefault(); const all = state.view === 'list' ? orderedVisible() : visibleEntries(); setSelection(all.map((e) => e.path)); renderMain(); updateStatus(); return; }
   if (meta && k === 'ArrowUp') { ev.preventDefault(); goUp(); return; }
   if (meta && k === 'ArrowDown') { ev.preventDefault(); selectedEntries().forEach(openEntry); return; }
   if (meta && k === '[') { ev.preventDefault(); goBack(); return; }
@@ -1144,6 +1242,8 @@ document.addEventListener('keydown', (ev) => {
   } else if (state.view === 'list') {
     if (k === 'ArrowDown') { ev.preventDefault(); moveSelection(1); }
     else if (k === 'ArrowUp') { ev.preventDefault(); moveSelection(-1); }
+    else if (k === 'ArrowRight') { ev.preventDefault(); listExpandKey(); }
+    else if (k === 'ArrowLeft') { ev.preventDefault(); listCollapseKey(); }
   } else if (state.view === 'gallery') {
     if (k === 'ArrowRight' || k === 'ArrowDown') { ev.preventDefault(); moveSelection(1); }
     else if (k === 'ArrowLeft' || k === 'ArrowUp') { ev.preventDefault(); moveSelection(-1); }
