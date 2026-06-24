@@ -913,7 +913,7 @@ function showContextMenu(ev, entry) {
   } else {
     items.push({ label: 'New Folder', sc: '⇧⌘N', act: doNewFolder });
     if (state.clipboard) items.push({ label: `Paste Item${state.clipboard.paths.length === 1 ? '' : 's'}`, sc: '⌘V', act: doPaste });
-    items.push({ label: 'Reveal in Finder', act: () => API.reveal(state.cwd) });
+    items.push({ label: 'Reveal in Finder', act: () => API.open(state.cwd) });
     items.push({ label: 'Copy Path to Clipboard', sc: '⌥⌘C', act: () => copyPathToClipboard([state.cwd]) });
     items.push({ sep: true });
     items.push({ label: 'Show View Options', disabled: true });
